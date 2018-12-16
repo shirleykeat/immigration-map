@@ -59,6 +59,7 @@ clean = function(year){
     stk = na.omit(stk)
     stk$ind = as.character(stk$ind)
     first = left_join(stk, ccode[-1], by = c("from" = "name"))
+    # you can fill the order column with either "1/2" like I do or with "from/to" or "origin/destination"
     first$order = rep("1",nrow(first))
     second =left_join(stk, scode[-1], by = c("ind" = "name"))
     second$order = rep("2",nrow(second))
