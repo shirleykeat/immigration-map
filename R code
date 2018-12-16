@@ -1,0 +1,71 @@
+library(readxl)
+library(dplyr)
+library(RCurl)
+library(XML)
+# scrape down country and state longitude & latitude information
+ccode = readHTMLTable(getURL("https://developers.google.com/public-data/docs/canonical/countries_csv"), 
+                      stringsAsFactors = FALSE)[[1]][ ,-1]
+scode = readHTMLTable(getURL("https://developers.google.com/public-data/docs/canonical/states_csv"), 
+                      stringsAsFactors = FALSE)[[1]][ ,-1]
+                      
+# By default, readHTMLTable treats all the information as character
+ccode[1:2] = sapply(ccode[1:2], as.numeric)
+scode[1:2] = sapply(scode[1:2], as.numeric)
+
+#compare the scraped data with DHS data and adjust the names
+#replace the excel file with yours
+df = read_excel("2017.xlsx", na = c("D","-"), skip = 3)
+df = df[-c(1:11), -2]
+df = head(df,-5)
+
+#adjust country names
+setdiff(unique(df[[1]]), ccode$name)
+ccode$name = gsub('Congo \\[DRC\\]', 'Congo, Democratic Republic', ccode$name)
+ccode$name = gsub('Congo \\[Republic\\]', 'Congo, Republic', ccode$name)
+ccode$name = gsub("Czech Republic", "Czechia", ccode$name)
+ccode$name = gsub("North Korea", "Korea, North", ccode$name)
+ccode$name = gsub("South Korea", "Korea, South", ccode$name)
+ccode$name = gsub("Macedonia \\[FYROM\\]", "Macedonia", ccode$name)
+ccode$name = gsub("Micronesia", "Micronesia, Federated States", ccode$name)
+ccode$name = gsub("Myanmar \\[Burma\\]", "Burma", ccode$name)
+ccode = add_row(ccode, latitude = 6.877, longitude = 31.307, name = "South Sudan")
+ccode$name = gsub("British Virgin Islands", "Virgin Islands, British", ccode$name)
+ccode$name = gsub("U.S. Virgin Islands", "Virgin Islands, U.S.", ccode$name)
+
+#wrap the cleaning in a function
+clean = function(year){
+    # you may need to adjust the filename suffix(.xlsx or .xls) according to the data you downloaded
+    path = paste(as.character(year),".xlsx",sep="")
+    df = read_excel(path, na = c("D","-"), skip = 3)
+    #remove the unnecessary data
+    df = df[-c(1:11), -2]
+    df = df[ , !(names(df) %in% c("U.S. Armed Services Posts", "U.S. Territories1","Guam", "Unknown"))]
+    #remove the notes
+    df = head(df,-5)
+    colnames(df)[1] = 'country'
+    df$country = gsub('Cabo Verde', 'Cape Verde', df$country)
+    df$country = gsub('Czechoslovakia \\(former\\)|Czechoslovakia, former', 'Czechia', df$country)
+    df$country = gsub('Netherlands Antilles \\(former\\)', 'Netherlands', df$country) 
+    df$country = gsub("China, People's Republic", 'China', df$country) 
+    df$country = gsub('Serbia and Montenegro \\(former\\)|Serbia and Montenegro', 'Serbia', df$country)
+    df$country = gsub('Serbia and Montenegro 1', 'Serbia', df$country)
+    df$country = gsub('Serbia and Montenegro1)', 'Serbia', df$country)
+    df$country = gsub('Serbia and Montenegro2)', 'Serbia', df$country)
+    df$country = gsub('Soviet Union \\(former\\)|Soviet Union, former', 'Russia', df$country)
+    stk = stack(df, select= -country)
+    stk$from = rep(df$country,(ncol(df)-1))
+    stk$year = rep(year,(ncol(df)-1))
+    stk$id = paste(stk$from,stk$ind,stk$year,sep="-")
+    stk = na.omit(stk)
+    stk$ind = as.character(stk$ind)
+    first = left_join(stk, ccode[-1], by = c("from" = "name"))
+    first$order = rep("1",nrow(first))
+    second =left_join(stk, scode[-1], by = c("ind" = "name"))
+    second$order = rep("2",nrow(second))
+    final = bind_rows(first, second)
+    wpath = paste("direct",year,".csv",sep="")
+    write.csv(final, wpath,row.names = F)
+}
+for(i in c(2008:2017)){
+    clean(i)
+}
