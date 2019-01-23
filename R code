@@ -2,6 +2,7 @@ library(readxl)
 library(dplyr)
 library(RCurl)
 library(XML)
+library(reshape2)
 # scrape down country and state longitude & latitude information
 ccode = readHTMLTable(getURL("https://developers.google.com/public-data/docs/canonical/countries_csv"), 
                       stringsAsFactors = FALSE)[[1]][ ,-1]
@@ -54,16 +55,16 @@ clean = function(year){
     df$country = gsub('Soviet Union \\(former\\)|Soviet Union, former', 'Russia', df$country)
     df$country = gsub('Korea 1', 'Korea, South', df$country)
     df$country = gsub('Korea1', 'Korea, South', df$country)
-    stk = stack(df, select= -country)
-    stk$from = rep(df$country,(ncol(df)-1))
+    stk = melt(df, id.vars = "country")
+    names(stk) = c("from","to","value")
     stk$year = rep(year,(ncol(df)-1))
     stk$id = paste(stk$from,stk$ind,stk$year,sep="-")
     stk = na.omit(stk)
-    stk$ind = as.character(stk$ind)
+    stk$to = as.character(stk$to)
     first = left_join(stk, ccode[-1], by = c("from" = "name"))
     # you can fill the order column with either "1/2" like I do or with "from/to" or "origin/destination"
     first$order = rep("1",nrow(first))
-    second =left_join(stk, scode[-1], by = c("ind" = "name"))
+    second =left_join(stk, scode[-1], by = c("to" = "name"))
     second$order = rep("2",nrow(second))
     final = bind_rows(first, second)
     wpath = paste("direct",year,".csv",sep="")
